@@ -45,32 +45,81 @@ Install the pre-built **LaravelBugBot** Slack app into your workspace — no Sla
 https://laravelbugbot.com/integrations/slack/install
 ```
 
-During authorization, Slack asks you to **pick the channel** where alerts should be posted. Afterward you'll see your bot token and channel ID on screen. Paste them into your `.env`:
+After installation, the success page shows a managed bot token. Paste the generated values into your `.env`:
 
 ```env
 LOG_CHANNEL=bug_reports
+LOG_LEVEL=error
 
 BUG_REPORTS_SLACK_APP_MODE=managed
 BUG_REPORTS_SLACK_BOT_TOKEN=xoxb-generated-token
-BUG_REPORTS_SLACK_CHANNEL=C1234567890
-BUG_REPORTS_SLACK_ACTIONS_ENABLED=false
+BUG_REPORTS_SLACK_CHANNEL="<put your channel id where you add the bot>"
+BUG_REPORTS_SLACK_ACTIONS_ENABLED=true
 ```
 
-Public channels work immediately. If you picked a **private** channel, also invite the bot:
+### 5. Add Laravel Bug Bot to your Slack channel
 
-```text
-/invite @LaravelBugBot
-```
+Slack requires you to add the installed app to the channel before it can post alerts there.
 
-> With the pre-built app, manage error statuses from the built-in dashboard (`BUG_REPORTS_SLACK_ACTIONS_ENABLED=false` hides the Slack buttons, which require your own Slack app).
+1. Click the channel name at the top of your Slack channel.
 
-### 5. Test your setup
+   ![Click the Slack channel name](docs/images/slack-install/01-click-channel-name.png)
+
+2. Open the **Integrations** tab in the channel details modal.
+
+   ![Open the Integrations tab](docs/images/slack-install/02-open-integrations.png)
+
+3. In the Apps section, click **Add an App**.
+
+   ![Click Add an App](docs/images/slack-install/03-add-app.png)
+
+4. Find **Laravel Bug Bot** and click **Add**.
+
+   ![Add Laravel Bug Bot](docs/images/slack-install/04-add-laravel-bug-bot.png)
+
+### 6. Copy the Slack channel ID
+
+Copy the Channel ID from Slack, then replace the placeholder in `BUG_REPORTS_SLACK_CHANNEL`.
+
+![Copy the Channel ID](docs/images/slack-install/05-copy-channel-id.png)
+
+The channel value is the channel **ID**, not the channel name.
+
+### 7. Test your setup
 
 ```bash
 php artisan bug-reports:test
 ```
 
 You should see the test exception arrive in your Slack channel. That's it — every exception in your app now lands in Slack, organized.
+
+### 8. Authorize dashboard access
+
+The dashboard is available in your application at:
+
+```text
+https://yourdomain.com/bugs-report
+```
+
+Edit `app/Providers/AppServiceProvider.php` and add the dashboard gate inside the `boot()` function:
+
+```php
+use App\Models\User;
+use Illuminate\Support\Facades\Gate;
+
+public function boot(): void
+{
+    Gate::define('viewBugReports', function (User $user) {
+        return $user->is_admin;
+    });
+}
+```
+
+Optionally, allow specific users by database ID:
+
+```env
+BUG_REPORTS_DASHBOARD_USER_IDS=205,206
+```
 
 ## Want To Use Your Own Slack Application?
 
@@ -151,7 +200,7 @@ BUG_REPORTS_SLACK_IGNORE_TTL_DAYS=30
 
 ## Dashboard
 
-The package includes a Horizon-style dashboard:
+The package includes a built-in dashboard:
 
 ```text
 https://your-domain.com/bugs-report
@@ -174,15 +223,18 @@ BUG_REPORTS_DASHBOARD_PATH=internal/bugs
 
 ### Dashboard authorization
 
-**The dashboard denies everyone by default.** To grant access, define the gate in a service provider (e.g. `AppServiceProvider::boot`):
+**The dashboard denies everyone by default.** To grant access, edit `app/Providers/AppServiceProvider.php` and add the gate inside the `boot()` function:
 
 ```php
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 
-Gate::define('viewBugReports', function (User $user) {
-    return $user->is_admin;
-});
+public function boot(): void
+{
+    Gate::define('viewBugReports', function (User $user) {
+        return $user->is_admin;
+    });
+}
 ```
 
 Or allow specific user IDs without defining a gate:
