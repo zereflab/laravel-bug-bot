@@ -2,6 +2,12 @@
 
 All notable changes to `zereflab/laravel-bug-reports` will be documented in this file.
 
+## Unreleased
+
+- **Breaking:** the dashboard now denies access by default. Define the `viewBugReports` gate or set `BUG_REPORTS_DASHBOARD_USER_IDS` to grant access (previously it was open in the `local` environment).
+- Redesigned the dashboard in the LaravelBugBot dark branding.
+- Added a Slack connection panel to the dashboard: connection status, channel, app mode, reporter identity, minimum level, throttle, and whether Slack buttons are enabled, plus a log-channel misconfiguration warning.
+
 ## 1.0.0 - 2026-06-12
 
 Initial release.

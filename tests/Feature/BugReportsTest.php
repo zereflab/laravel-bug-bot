@@ -153,6 +153,17 @@ class BugReportsTest extends TestCase
         $this->assertSame(1, $report->occurrences);
     }
 
+    public function test_dashboard_is_denied_by_default(): void
+    {
+        $this->artisan('migrate')->run();
+
+        $this->get('/bugs-report')->assertForbidden();
+
+        $this->actingAs($this->userWithId(99))
+            ->get('/bugs-report')
+            ->assertForbidden();
+    }
+
     public function test_dashboard_can_be_viewed_by_configured_user_id(): void
     {
         $this->artisan('migrate')->run();

@@ -94,6 +94,8 @@ class BugReportsServiceProvider extends ServiceProvider
             return;
         }
 
-        Gate::define($ability, fn ($user = null): bool => app()->environment('local'));
+        // Deny by default. Applications must define the gate themselves or
+        // allowlist user IDs via BUG_REPORTS_DASHBOARD_USER_IDS.
+        Gate::define($ability, fn ($user = null): bool => false);
     }
 }

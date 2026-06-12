@@ -38,6 +38,7 @@ class DashboardController extends Controller
                 'topExceptions' => $this->topExceptions(),
                 'totalReports' => BugReport::query()->count(),
                 'totalOccurrences' => BugReport::query()->sum('occurrences'),
+                'slackInfo' => $this->slackInfo(),
             ]);
         } catch (Throwable $exception) {
             return view('bug-reports::dashboard.missing-migration', [
@@ -88,6 +89,27 @@ class DashboardController extends Controller
         }
 
         return Gate::allows(config('bug-reports.dashboard.gate', 'viewBugReports'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function slackInfo(): array
+    {
+        $token = config('bug-reports.slack.bot_token');
+
+        return [
+            'connected' => filled($token) && filled(config('bug-reports.slack.channel')),
+            'channel' => config('bug-reports.slack.channel') ?: 'Not configured',
+            'app_mode' => config('bug-reports.slack.app_mode', 'own') === 'managed' ? 'LaravelBugBot app' : 'Own Slack app',
+            'username' => config('bug-reports.slack.username'),
+            'emoji' => config('bug-reports.slack.emoji'),
+            'level' => strtoupper((string) config('bug-reports.level', 'error')),
+            'throttle_minutes' => (int) config('bug-reports.throttle_minutes', 5),
+            'actions_enabled' => (bool) config('bug-reports.slack.actions.enabled', true),
+            'log_channel' => config('logging.default'),
+            'expected_channel' => config('bug-reports.channel', 'bug_reports'),
+        ];
     }
 
     /**

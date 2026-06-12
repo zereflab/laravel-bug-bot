@@ -41,7 +41,7 @@ php artisan migrate
 
 Install the pre-built **LaravelBugBot** Slack app into your workspace — no Slack app creation needed:
 
-**[➡ Add to Slack](https://laravelbugbot.com/integrations/slack/install)**
+<a href="https://laravelbugbot.com/integrations/slack/install" target="_blank"><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
 
 ```text
 https://laravelbugbot.com/integrations/slack/install
@@ -176,13 +176,9 @@ Change the dashboard path:
 BUG_REPORTS_DASHBOARD_PATH=internal/bugs
 ```
 
-Use Laravel middleware to protect it:
+### Dashboard authorization
 
-```env
-BUG_REPORTS_DASHBOARD_MIDDLEWARE=web,auth
-```
-
-Authorize access with a gate:
+**The dashboard denies everyone by default.** To grant access, define the gate in a service provider (e.g. `AppServiceProvider::boot`):
 
 ```php
 use App\Models\User;
@@ -193,10 +189,16 @@ Gate::define('viewBugReports', function (User $user) {
 });
 ```
 
-Optionally allow specific user IDs to bypass the gate:
+Or allow specific user IDs without defining a gate:
 
 ```env
 BUG_REPORTS_DASHBOARD_USER_IDS=1,42
+```
+
+Add authentication middleware so visitors are sent to login first:
+
+```env
+BUG_REPORTS_DASHBOARD_MIDDLEWARE=web,auth
 ```
 
 ## Production Notes
