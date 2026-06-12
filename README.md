@@ -47,7 +47,7 @@ Install the pre-built **LaravelBugBot** Slack app into your workspace — no Sla
 https://laravelbugbot.com/integrations/slack/install
 ```
 
-After authorizing, you'll see your bot token and workspace details on screen. Paste them into your `.env`:
+During authorization, Slack asks you to **pick the channel** where alerts should be posted. Afterward you'll see your bot token and channel ID on screen. Paste them into your `.env`:
 
 ```env
 LOG_CHANNEL=bug_reports
@@ -58,9 +58,7 @@ BUG_REPORTS_SLACK_CHANNEL=C1234567890
 BUG_REPORTS_SLACK_ACTIONS_ENABLED=false
 ```
 
-Use the channel ID (starts with `C`), not the channel name. To find it: open the channel in Slack, click its name, and scroll to the bottom of the About tab.
-
-Then invite the bot to your channel in Slack:
+Public channels work immediately. If you picked a **private** channel, also invite the bot:
 
 ```text
 /invite @LaravelBugBot
