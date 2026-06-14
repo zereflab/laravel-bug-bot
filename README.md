@@ -70,8 +70,10 @@ LOG_LEVEL=error
 BUG_REPORTS_SLACK_APP_MODE=managed
 BUG_REPORTS_SLACK_BOT_TOKEN=xoxb-generated-token
 BUG_REPORTS_SLACK_CHANNEL=C1234567890
-BUG_REPORTS_SLACK_ACTIONS_ENABLED=true
+BUG_REPORTS_SLACK_ACTIONS_ENABLED=false
 ```
+
+> Managed Slack installs use the built-in dashboard for `Solved` / `Ignore`. Slack action buttons require your own Slack app because Slack sends button clicks to the Slack app owner's Interactivity Request URL.
 
 ### 5. Add Laravel Bug Bot to your Slack channel
 
@@ -224,13 +226,43 @@ Each exception gets a fingerprint based on exception class, message, file, and l
 
 - `Ignore` suppresses future alerts for that same fingerprint.
 - `Solved` marks the fingerprint as resolved and clears the throttle.
-- Both actions update all stored parent messages for that same fingerprint.
+- In managed Slack app mode, use the dashboard buttons to solve or ignore errors.
+- Slack message buttons require your own Slack app because Slack sends button clicks to the Slack app owner's Interactivity Request URL.
+- When Slack buttons are available, both actions update all stored parent messages for that same fingerprint.
 - If a solved fingerprint happens again, it is reopened as pending.
 
 Bug reports, occurrence counts, statuses, and Slack message references are stored in the database. By default, ignored errors are ignored forever. You can expire ignored errors:
 
 ```env
 BUG_REPORTS_SLACK_IGNORE_TTL_DAYS=30
+```
+
+### Slack button endpoint
+
+The package automatically registers the Slack interactivity endpoint:
+
+```text
+POST /bug-reports/slack/actions
+```
+
+By default this route uses the `api` middleware and is also registered without Laravel's CSRF middleware, because Slack cannot send a Laravel CSRF token. You should not add this route manually.
+
+If you use your own Slack app and want Slack `Solved` / `Ignore` buttons, set the Slack app's **Interactivity Request URL** to your deployed Laravel app:
+
+```text
+https://<your-laravel-app-domain>/bug-reports/slack/actions
+```
+
+If you change `BUG_REPORTS_ROUTE_PREFIX`, the URL changes too. For example:
+
+```env
+BUG_REPORTS_ROUTE_PREFIX=internal/bug-reports
+```
+
+Then Slack must post to:
+
+```text
+https://<your-laravel-app-domain>/internal/bug-reports/slack/actions
 ```
 
 ## Dashboard

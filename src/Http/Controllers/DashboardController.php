@@ -106,7 +106,8 @@ class DashboardController extends Controller
             'emoji' => config('bug-reports.slack.emoji'),
             'level' => strtoupper((string) config('bug-reports.level', 'error')),
             'throttle_minutes' => (int) config('bug-reports.throttle_minutes', 5),
-            'actions_enabled' => (bool) config('bug-reports.slack.actions.enabled', true),
+            'actions_enabled' => config('bug-reports.slack.app_mode', 'own') !== 'managed'
+                && (bool) config('bug-reports.slack.actions.enabled', true),
             'log_channel' => config('logging.default'),
             'expected_channel' => config('bug-reports.channel', 'bug_reports'),
         ];

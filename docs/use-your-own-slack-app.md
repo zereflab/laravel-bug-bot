@@ -1,6 +1,6 @@
 # Use Your Own Slack App
 
-The fastest way to use Laravel Bug Reports is the pre-built LaravelBugBot Slack app — see the [main README](../README.md), or install it directly:
+The fastest way to use Laravel Bug Bot is the pre-built LaravelBugBot Slack app — see the [main README](../README.md), or install it directly:
 
 <a href="https://laravelbugbot.com/integrations/slack/install" target="_blank"><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
 
@@ -61,6 +61,14 @@ https://<your-laravel-app-domain>/bug-reports/slack/actions
 ```
 
 This URL belongs to **your Laravel application**, not `laravelbugbot.com`. If you changed `BUG_REPORTS_ROUTE_PREFIX`, adjust the path accordingly. Your application must be publicly reachable at that URL.
+
+The package automatically creates this `POST` route and excludes it from Laravel's CSRF middleware, because Slack cannot send a Laravel CSRF token. Keep the route middleware at the default `api` unless you have a specific reason to change it:
+
+```env
+BUG_REPORTS_ROUTES_ENABLED=true
+BUG_REPORTS_ROUTE_PREFIX=bug-reports
+BUG_REPORTS_ROUTE_MIDDLEWARE=api
+```
 
 Keep the buttons enabled in your `.env`:
 

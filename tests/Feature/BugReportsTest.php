@@ -45,6 +45,26 @@ class BugReportsTest extends TestCase
         $this->assertStringContainsString('*Stack trace*', $thread['text']);
     }
 
+    public function test_managed_slack_app_mode_does_not_render_action_buttons(): void
+    {
+        config()->set('bug-reports.slack.app_mode', 'managed');
+        config()->set('bug-reports.slack.actions.enabled', true);
+        Log::forgetChannel('bug_reports');
+        Cache::flush();
+        Http::fakeSequence()
+            ->push(['ok' => true, 'ts' => '171819.0001'])
+            ->push(['ok' => true]);
+
+        Log::channel('bug_reports')->error('Managed app failure.', [
+            'exception' => new RuntimeException('Managed app failure.'),
+        ]);
+
+        $parent = Http::recorded()[0][0]->data();
+
+        $this->assertCount(1, $parent['blocks']);
+        $this->assertSame('section', $parent['blocks'][0]['type']);
+    }
+
     public function test_it_throttles_duplicate_exceptions(): void
     {
         Cache::flush();

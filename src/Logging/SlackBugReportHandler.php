@@ -141,7 +141,7 @@ class SlackBugReportHandler extends AbstractProcessingHandler
      */
     private function parentBlocks(string $summary, string $fingerprint): array
     {
-        if (! config('bug-reports.slack.actions.enabled', true)) {
+        if (! $this->slackActionsEnabled()) {
             return [[
                 'type' => 'section',
                 'text' => ['type' => 'mrkdwn', 'text' => $summary],
@@ -180,6 +180,12 @@ class SlackBugReportHandler extends AbstractProcessingHandler
                 ],
             ],
         ];
+    }
+
+    private function slackActionsEnabled(): bool
+    {
+        return config('bug-reports.slack.app_mode', 'own') !== 'managed'
+            && (bool) config('bug-reports.slack.actions.enabled', true);
     }
 
     private function formattedDate(LogRecord $record): string
