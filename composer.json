@@ -1,5 +1,5 @@
 {
-    "name": "zereflab/laravel-bug-reports",
+    "name": "zereflab/laravel-bug-bot",
     "description": "Organized Laravel exception reports for Slack, with threaded stack traces, duplicate throttling, and interactive solve/ignore actions.",
     "type": "library",
     "license": "MIT",
@@ -11,7 +11,7 @@
         "bug-reports",
         "error-tracking"
     ],
-    "homepage": "https://github.com/ZEREFLAB/laravel-bug-reports",
+    "homepage": "https://github.com/ZEREFLAB/laravel-bug-bot",
     "authors": [
         {
             "name": "ZEREFLAB"

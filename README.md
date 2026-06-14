@@ -22,7 +22,7 @@ This package replaces noisy default Slack log messages with a clean parent alert
 ### 1. Install the package
 
 ```bash
-composer require zereflab/laravel-bug-reports
+composer require zereflab/laravel-bug-bot
 ```
 
 ### 2. Publish the config
