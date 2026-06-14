@@ -4,7 +4,7 @@ The fastest way to use Laravel Bug Bot is the pre-built LaravelBugBot Slack app 
 
 <a href="https://laravelbugbot.com/integrations/slack/install" target="_blank"><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
 
-Use this guide instead if you want full control with your own Slack app. This is also currently the only way to get the Slack `Solved` / `Ignore` buttons, since button clicks are delivered to the Slack app owner.
+Use this guide instead if you want full control with your own Slack app, its scopes, and its Slack Interactivity Request URL.
 
 ## 1. Create the Slack app
 

@@ -95,6 +95,8 @@ return [
             'ignore_ttl_days' => (int) env('BUG_REPORTS_SLACK_IGNORE_TTL_DAYS', 0),
             'solved_ttl_days' => (int) env('BUG_REPORTS_SLACK_SOLVED_TTL_DAYS', 7),
             'stored_messages' => (int) env('BUG_REPORTS_SLACK_STORED_MESSAGES', 50),
+            'managed_callback_url' => env('BUG_REPORTS_MANAGED_ACTION_URL'),
+            'managed_callback_secret' => env('BUG_REPORTS_MANAGED_ACTION_SECRET', env('APP_KEY')),
         ],
     ],
 ];

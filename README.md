@@ -70,10 +70,10 @@ LOG_LEVEL=error
 BUG_REPORTS_SLACK_APP_MODE=managed
 BUG_REPORTS_SLACK_BOT_TOKEN=xoxb-generated-token
 BUG_REPORTS_SLACK_CHANNEL=C1234567890
-BUG_REPORTS_SLACK_ACTIONS_ENABLED=false
+BUG_REPORTS_SLACK_ACTIONS_ENABLED=true
 ```
 
-> Managed Slack installs use the built-in dashboard for `Solved` / `Ignore`. Slack action buttons require your own Slack app because Slack sends button clicks to the Slack app owner's Interactivity Request URL.
+> Managed Slack installs use `laravelbugbot.com` as the Slack Interactivity Request URL. The package embeds a signed callback in each button so Laravel Bug Bot can forward `Solved` / `Ignore` clicks back to the Laravel app where this package is installed.
 
 ### 5. Add Laravel Bug Bot to your Slack channel
 
@@ -160,7 +160,7 @@ BUG_REPORTS_DASHBOARD_USER_IDS=205,206
 
 ## Want To Use Your Own Slack Application?
 
-If you prefer to create and control your own Slack app (required for the Slack `Solved` / `Ignore` buttons), follow the separate guide:
+If you prefer to create and control your own Slack app instead of using the managed Laravel Bug Bot app, follow the separate guide:
 
 **[➡ Use Your Own Slack App](docs/use-your-own-slack-app.md)**
 
@@ -178,6 +178,8 @@ BUG_REPORTS_SLACK_SIGNING_SECRET=
 BUG_REPORTS_SLACK_USERNAME="${APP_NAME}"
 BUG_REPORTS_SLACK_EMOJI=:boom:
 BUG_REPORTS_SLACK_ACTIONS_ENABLED=true
+BUG_REPORTS_MANAGED_ACTION_URL=
+BUG_REPORTS_MANAGED_ACTION_SECRET=
 BUG_REPORTS_SLACK_IGNORE_TTL_DAYS=0
 BUG_REPORTS_SLACK_SOLVED_TTL_DAYS=7
 BUG_REPORTS_SLACK_STORED_MESSAGES=50
@@ -227,9 +229,9 @@ Each exception gets a fingerprint based on exception class, message, file, and l
 
 - `Ignore` suppresses future alerts for that same fingerprint.
 - `Solved` marks the fingerprint as resolved and clears the throttle.
-- In managed Slack app mode, use the dashboard buttons to solve or ignore errors.
-- Slack message buttons require your own Slack app because Slack sends button clicks to the Slack app owner's Interactivity Request URL.
-- When Slack buttons are available, both actions update all stored parent messages for that same fingerprint.
+- In managed Slack app mode, button clicks go to `laravelbugbot.com` first, then get forwarded to a signed callback endpoint in your Laravel app.
+- In own Slack app mode, Slack can post directly to your Laravel app's signed action endpoint.
+- Both actions update stored report state for that same fingerprint.
 - If a solved fingerprint happens again, it is reopened as pending.
 
 Bug reports, occurrence counts, statuses, and Slack message references are stored in the database. By default, ignored errors are ignored forever. You can expire ignored errors:
@@ -258,6 +260,20 @@ POST /{BUG_REPORTS_DASHBOARD_PATH}/slack/actions
 ```
 
 If Slack reaches Laravel but `BUG_REPORTS_SLACK_SIGNING_SECRET` is missing or wrong, the endpoint returns `401 Invalid signature` instead of `404`.
+
+Managed Slack app installs also automatically register this client callback endpoint:
+
+```text
+POST /bug-reports/managed/actions
+```
+
+Laravel Bug Bot signs each Slack button value with `BUG_REPORTS_MANAGED_ACTION_SECRET` (defaults to `APP_KEY`) and includes this callback URL. When Slack sends the click to `laravelbugbot.com`, Laravel Bug Bot forwards the action to this endpoint so the package can update the local database.
+
+Make sure `APP_URL` is correct in the Laravel app where the package is installed. If auto-detection is wrong, set:
+
+```env
+BUG_REPORTS_MANAGED_ACTION_URL=https://your-app.com/bug-reports/managed/actions
+```
 
 If you use your own Slack app and want Slack `Solved` / `Ignore` buttons, set the Slack app's **Interactivity Request URL** to your deployed Laravel app:
 

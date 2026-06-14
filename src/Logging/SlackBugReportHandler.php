@@ -168,14 +168,14 @@ class SlackBugReportHandler extends AbstractProcessingHandler
                         'text' => ['type' => 'plain_text', 'text' => 'Solved'],
                         'style' => 'primary',
                         'action_id' => ReportState::ACTION_SOLVE,
-                        'value' => $fingerprint,
+                        'value' => $this->buttonValue($fingerprint),
                     ],
                     [
                         'type' => 'button',
                         'text' => ['type' => 'plain_text', 'text' => 'Ignore'],
                         'style' => 'danger',
                         'action_id' => ReportState::ACTION_IGNORE,
-                        'value' => $fingerprint,
+                        'value' => $this->buttonValue($fingerprint),
                     ],
                 ],
             ],
@@ -184,8 +184,44 @@ class SlackBugReportHandler extends AbstractProcessingHandler
 
     private function slackActionsEnabled(): bool
     {
-        return config('bug-reports.slack.app_mode', 'own') !== 'managed'
-            && (bool) config('bug-reports.slack.actions.enabled', true);
+        return (bool) config('bug-reports.slack.actions.enabled', true);
+    }
+
+    private function buttonValue(string $fingerprint): string
+    {
+        if (config('bug-reports.slack.app_mode', 'own') !== 'managed') {
+            return $fingerprint;
+        }
+
+        $actionUrl = $this->managedActionUrl();
+
+        return json_encode([
+            'v' => 1,
+            'fingerprint' => $fingerprint,
+            'action_url' => $actionUrl,
+            'signature' => $this->managedActionSignature($fingerprint, $actionUrl),
+        ], JSON_UNESCAPED_SLASHES) ?: $fingerprint;
+    }
+
+    private function managedActionUrl(): string
+    {
+        $configured = config('bug-reports.slack.actions.managed_callback_url');
+
+        if (is_string($configured) && $configured !== '') {
+            return $configured;
+        }
+
+        return url(trim((string) config('bug-reports.routes.prefix', 'bug-reports'), '/').'/managed/actions');
+    }
+
+    private function managedActionSignature(string $fingerprint, string $actionUrl): string
+    {
+        return hash_hmac('sha256', $fingerprint.'|'.$actionUrl, $this->managedActionSecret());
+    }
+
+    private function managedActionSecret(): string
+    {
+        return (string) config('bug-reports.slack.actions.managed_callback_secret', config('app.key'));
     }
 
     private function formattedDate(LogRecord $record): string

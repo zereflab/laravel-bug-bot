@@ -67,7 +67,8 @@ class TestBugReportCommand extends Command
     private function displaySlackActionInfo(): void
     {
         if (config('bug-reports.slack.app_mode', 'own') === 'managed') {
-            $this->components->info('Managed Slack app mode uses the dashboard for Solved / Ignore actions.');
+            $this->components->info('Managed Slack app mode forwards Solved / Ignore actions through laravelbugbot.com to this app.');
+            $this->components->info('Managed action callback URL: '.$this->managedActionUrl());
 
             return;
         }
@@ -86,5 +87,16 @@ class TestBugReportCommand extends Command
     private function slackActionUrl(): string
     {
         return url(trim((string) config('bug-reports.routes.prefix', 'bug-reports'), '/').'/slack/actions');
+    }
+
+    private function managedActionUrl(): string
+    {
+        $configured = config('bug-reports.slack.actions.managed_callback_url');
+
+        if (is_string($configured) && $configured !== '') {
+            return $configured;
+        }
+
+        return url(trim((string) config('bug-reports.routes.prefix', 'bug-reports'), '/').'/managed/actions');
     }
 }

@@ -45,10 +45,11 @@ class BugReportsTest extends TestCase
         $this->assertStringContainsString('*Stack trace*', $thread['text']);
     }
 
-    public function test_managed_slack_app_mode_does_not_render_action_buttons(): void
+    public function test_managed_slack_app_mode_renders_signed_action_buttons(): void
     {
         config()->set('bug-reports.slack.app_mode', 'managed');
         config()->set('bug-reports.slack.actions.enabled', true);
+        config()->set('bug-reports.slack.actions.managed_callback_url', 'https://client.test/bug-reports/managed/actions');
         Log::forgetChannel('bug_reports');
         Cache::flush();
         Http::fakeSequence()
@@ -60,9 +61,13 @@ class BugReportsTest extends TestCase
         ]);
 
         $parent = Http::recorded()[0][0]->data();
+        $value = json_decode($parent['blocks'][2]['elements'][0]['value'], true);
 
-        $this->assertCount(1, $parent['blocks']);
-        $this->assertSame('section', $parent['blocks'][0]['type']);
+        $this->assertSame('actions', $parent['blocks'][2]['type']);
+        $this->assertSame(1, $value['v']);
+        $this->assertSame('https://client.test/bug-reports/managed/actions', $value['action_url']);
+        $this->assertIsString($value['fingerprint']);
+        $this->assertIsString($value['signature']);
     }
 
     public function test_it_throttles_duplicate_exceptions(): void
@@ -253,6 +258,34 @@ class BugReportsTest extends TestCase
         ] as $uri) {
             $this->post($uri)->assertUnauthorized();
         }
+    }
+
+    public function test_managed_action_callback_updates_report_state(): void
+    {
+        $this->artisan('migrate')->run();
+        config()->set('bug-reports.slack.actions.managed_callback_secret', 'managed-secret');
+
+        $report = BugReport::query()->create([
+            'fingerprint' => 'managed-fingerprint',
+            'status' => 'pending',
+            'message' => 'Managed action failure.',
+            'occurrences' => 1,
+            'first_seen_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+        $actionUrl = 'https://client.test/bug-reports/managed/actions';
+
+        $this->postJson('/bug-reports/managed/actions', [
+            'fingerprint' => 'managed-fingerprint',
+            'action' => ReportState::ACTION_SOLVE,
+            'action_url' => $actionUrl,
+            'signature' => hash_hmac('sha256', 'managed-fingerprint|'.$actionUrl, 'managed-secret'),
+        ])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('status', 'solved');
+
+        $this->assertSame('solved', $report->fresh()->status);
     }
 
     private function postSlackAction(array $payload)
