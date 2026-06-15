@@ -186,6 +186,45 @@ class BugReportsTest extends TestCase
         $this->assertSame(1, $report->occurrences);
     }
 
+    public function test_record_occurrence_counts_atomically_and_keeps_one_row(): void
+    {
+        $this->artisan('migrate')->run();
+
+        $attributes = [
+            'level' => 'ERROR',
+            'exception_class' => 'RuntimeException',
+            'message' => 'race',
+            'origin' => 'race-test',
+        ];
+
+        ReportState::recordOccurrence('race-fp', $attributes);
+        ReportState::recordOccurrence('race-fp', $attributes);
+        ReportState::recordOccurrence('race-fp', $attributes);
+
+        $report = BugReport::query()->where('fingerprint', 'race-fp')->first();
+
+        $this->assertSame(1, BugReport::query()->where('fingerprint', 'race-fp')->count());
+        $this->assertSame(3, (int) $report->occurrences);
+        $this->assertSame(3, BugReportOccurrence::query()->where('fingerprint', 'race-fp')->count());
+    }
+
+    public function test_record_occurrence_reopens_a_solved_report(): void
+    {
+        $this->artisan('migrate')->run();
+
+        $attributes = ['level' => 'ERROR', 'exception_class' => 'RuntimeException', 'message' => 'reopen'];
+
+        ReportState::recordOccurrence('reopen-fp', $attributes);
+        ReportState::solve('reopen-fp');
+        $this->assertSame('solved', BugReport::query()->where('fingerprint', 'reopen-fp')->first()->status);
+
+        $report = ReportState::recordOccurrence('reopen-fp', $attributes);
+
+        $this->assertSame('pending', $report->status);
+        $this->assertNull($report->solved_at);
+        $this->assertSame(2, (int) BugReport::query()->where('fingerprint', 'reopen-fp')->first()->occurrences);
+    }
+
     public function test_dashboard_is_denied_by_default(): void
     {
         $this->artisan('migrate')->run();

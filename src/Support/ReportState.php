@@ -2,6 +2,7 @@
 
 namespace Zereflab\LaravelBugReports\Support;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 use Zereflab\LaravelBugReports\Models\BugReport;
@@ -169,20 +170,8 @@ class ReportState
     {
         try {
             $now = now();
-            $report = BugReport::query()->firstOrNew(['fingerprint' => $fingerprint]);
-            $exists = $report->exists;
-            $status = $report->status ?: BugReport::STATUS_PENDING;
 
-            if ($status === BugReport::STATUS_SOLVED) {
-                $status = BugReport::STATUS_PENDING;
-            }
-
-            if ($status === BugReport::STATUS_IGNORED && $report->status_expires_at && $report->status_expires_at->isPast()) {
-                $status = BugReport::STATUS_PENDING;
-            }
-
-            $report->forceFill([
-                'status' => $status,
+            $meta = [
                 'level' => $attributes['level'] ?? null,
                 'exception_class' => $attributes['exception_class'] ?? null,
                 'message' => $attributes['message'] ?? null,
@@ -193,13 +182,55 @@ class ReportState
                 'context' => $attributes['context'] ?? null,
                 'request' => $attributes['request'] ?? null,
                 'stack_trace' => $attributes['stack_trace'] ?? null,
-                'occurrences' => $exists ? ((int) $report->occurrences + 1) : 1,
-                'first_seen_at' => $report->first_seen_at ?: $now,
                 'last_seen_at' => $now,
-                'solved_at' => $status === BugReport::STATUS_SOLVED ? $report->solved_at : null,
-                'ignored_at' => $status === BugReport::STATUS_IGNORED ? $report->ignored_at : null,
-                'status_expires_at' => $status === BugReport::STATUS_IGNORED ? $report->status_expires_at : null,
-            ])->save();
+            ];
+
+            // Create-or-fetch the parent row in a way that survives concurrent
+            // first inserts: if two requests race on a brand-new fingerprint,
+            // one wins the INSERT and the other catches the unique violation
+            // and reads the winner's row instead of throwing.
+            try {
+                $report = BugReport::query()->firstOrCreate(
+                    ['fingerprint' => $fingerprint],
+                    $meta + [
+                        'status' => BugReport::STATUS_PENDING,
+                        'first_seen_at' => $now,
+                    ]
+                );
+            } catch (QueryException $exception) {
+                $report = BugReport::query()->where('fingerprint', $fingerprint)->first();
+
+                if (! $report instanceof BugReport) {
+                    throw $exception;
+                }
+            }
+
+            if (! $report->wasRecentlyCreated) {
+                // Refresh metadata, then increment the counter atomically so
+                // simultaneous occurrences are never lost to a read-modify-write.
+                $report->forceFill($meta)->save();
+                BugReport::query()->whereKey($report->getKey())->increment('occurrences');
+            }
+
+            // Reopen solved or expired-ignored reports based on current state.
+            $status = $report->status ?: BugReport::STATUS_PENDING;
+
+            if ($status === BugReport::STATUS_SOLVED) {
+                $report->forceFill([
+                    'status' => BugReport::STATUS_PENDING,
+                    'solved_at' => null,
+                ])->save();
+            } elseif (
+                $status === BugReport::STATUS_IGNORED
+                && $report->status_expires_at
+                && $report->status_expires_at->isPast()
+            ) {
+                $report->forceFill([
+                    'status' => BugReport::STATUS_PENDING,
+                    'ignored_at' => null,
+                    'status_expires_at' => null,
+                ])->save();
+            }
 
             BugReportOccurrence::query()->create([
                 'bug_report_id' => $report->getKey(),
