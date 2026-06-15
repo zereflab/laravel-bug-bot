@@ -10,6 +10,7 @@ use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\LogRecord;
 use RuntimeException;
 use Throwable;
+use Zereflab\LaravelBugReports\Models\BugReport;
 use Zereflab\LaravelBugReports\Support\ReportState;
 
 class SlackBugReportHandler extends AbstractProcessingHandler
@@ -37,9 +38,13 @@ class SlackBugReportHandler extends AbstractProcessingHandler
         $exception = $exception instanceof Throwable ? $exception : null;
         $fingerprint = $this->fingerprint($record, $exception);
         $summary = $this->summary($record, $exception);
-        ReportState::recordOccurrence($fingerprint, $this->reportAttributes($record, $exception));
+        $report = ReportState::recordOccurrence($fingerprint, $this->reportAttributes($record, $exception));
 
-        if (ReportState::isIgnored($fingerprint)) {
+        $ignored = $report instanceof BugReport
+            ? $report->status === BugReport::STATUS_IGNORED
+            : ReportState::isIgnored($fingerprint);
+
+        if ($ignored) {
             return;
         }
 
@@ -53,6 +58,8 @@ class SlackBugReportHandler extends AbstractProcessingHandler
 
         try {
             $response = Http::withToken($this->token)
+                ->connectTimeout(3)
+                ->timeout(5)
                 ->asJson()
                 ->post('https://slack.com/api/chat.postMessage', [
                     'channel' => $this->channel,
@@ -78,10 +85,12 @@ class SlackBugReportHandler extends AbstractProcessingHandler
                 'channel' => $this->channel,
                 'ts' => $threadTimestamp,
                 'summary' => $summary,
-            ]);
+            ], $report);
 
             foreach ($this->threadMessages($record, $exception) as $message) {
                 $replyResponse = Http::withToken($this->token)
+                    ->connectTimeout(3)
+                    ->timeout(5)
                     ->asJson()
                     ->post('https://slack.com/api/chat.postMessage', [
                         'channel' => $this->channel,
@@ -168,14 +177,14 @@ class SlackBugReportHandler extends AbstractProcessingHandler
                         'text' => ['type' => 'plain_text', 'text' => 'Solved'],
                         'style' => 'primary',
                         'action_id' => ReportState::ACTION_SOLVE,
-                        'value' => $this->buttonValue($fingerprint),
+                        'value' => $this->buttonValue($fingerprint, ReportState::ACTION_SOLVE),
                     ],
                     [
                         'type' => 'button',
                         'text' => ['type' => 'plain_text', 'text' => 'Ignore'],
                         'style' => 'danger',
                         'action_id' => ReportState::ACTION_IGNORE,
-                        'value' => $this->buttonValue($fingerprint),
+                        'value' => $this->buttonValue($fingerprint, ReportState::ACTION_IGNORE),
                     ],
                 ],
             ],
@@ -187,7 +196,7 @@ class SlackBugReportHandler extends AbstractProcessingHandler
         return (bool) config('bug-reports.slack.actions.enabled', true);
     }
 
-    private function buttonValue(string $fingerprint): string
+    private function buttonValue(string $fingerprint, string $action): string
     {
         if (config('bug-reports.slack.app_mode', 'own') !== 'managed') {
             return $fingerprint;
@@ -196,10 +205,11 @@ class SlackBugReportHandler extends AbstractProcessingHandler
         $actionUrl = $this->managedActionUrl();
 
         return json_encode([
-            'v' => 1,
+            'v' => 2,
             'fingerprint' => $fingerprint,
+            'action' => $action,
             'action_url' => $actionUrl,
-            'signature' => $this->managedActionSignature($fingerprint, $actionUrl),
+            'signature' => $this->managedActionSignature($fingerprint, $action, $actionUrl),
         ], JSON_UNESCAPED_SLASHES) ?: $fingerprint;
     }
 
@@ -214,9 +224,9 @@ class SlackBugReportHandler extends AbstractProcessingHandler
         return url(trim((string) config('bug-reports.routes.prefix', 'bug-reports'), '/').'/managed/actions');
     }
 
-    private function managedActionSignature(string $fingerprint, string $actionUrl): string
+    private function managedActionSignature(string $fingerprint, string $action, string $actionUrl): string
     {
-        return hash_hmac('sha256', $fingerprint.'|'.$actionUrl, $this->managedActionSecret());
+        return hash_hmac('sha256', implode('|', [$fingerprint, $action, $actionUrl]), $this->managedActionSecret());
     }
 
     private function managedActionSecret(): string
@@ -354,14 +364,14 @@ class SlackBugReportHandler extends AbstractProcessingHandler
         if (! app()->runningInConsole()) {
             $sections[] = "*Request*\n".$this->codeBlock(collect([
                 'method' => $request->method(),
-                'url' => $request->fullUrl(),
+                'url' => $this->redactUrl($request->fullUrl()),
                 'ip' => $request->ip(),
                 'user_id' => $request->user()?->getAuthIdentifier(),
             ])->filter(fn (mixed $value): bool => filled($value))->toJson(JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
 
         if ($context !== []) {
-            $sections[] = "*Context*\n".$this->codeBlock(json_encode($context, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR));
+            $sections[] = "*Context*\n".$this->codeBlock(json_encode($this->redactArray($context), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR));
         }
 
         $sections[] = "*Stack trace*\n".$this->codeBlock($exception->getTraceAsString());
@@ -406,6 +416,8 @@ class SlackBugReportHandler extends AbstractProcessingHandler
             return null;
         }
 
+        $context = $this->redactArray($context);
+
         $encoded = json_encode($context, JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
 
         return is_string($encoded) ? json_decode($encoded, true) : null;
@@ -424,10 +436,78 @@ class SlackBugReportHandler extends AbstractProcessingHandler
 
         return collect([
             'method' => $request->method(),
-            'url' => $request->fullUrl(),
+            'url' => $this->redactUrl($request->fullUrl()),
             'ip' => $request->ip(),
             'user_id' => $request->user()?->getAuthIdentifier(),
         ])->filter(fn (mixed $value): bool => filled($value))->all();
+    }
+
+    /**
+     * Lower-cased keys whose values must be redacted from logged context and URLs.
+     *
+     * @return array<int, string>
+     */
+    private function redactKeys(): array
+    {
+        $keys = config('bug-reports.redact', []);
+
+        if (! is_array($keys)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (mixed $key): string => strtolower(trim((string) $key)),
+            $keys
+        )));
+    }
+
+    /**
+     * Redact sensitive values from a query string while preserving the path.
+     */
+    private function redactUrl(string $url): string
+    {
+        $keys = $this->redactKeys();
+
+        if ($keys === [] || ! str_contains($url, '?')) {
+            return $url;
+        }
+
+        [$base, $query] = explode('?', $url, 2);
+
+        parse_str($query, $params);
+
+        $params = $this->redactArray($params);
+
+        return $params === [] ? $base : $base.'?'.http_build_query($params);
+    }
+
+    /**
+     * Recursively redact array values whose key matches the blocklist.
+     *
+     * @param  array<array-key, mixed>  $data
+     * @return array<array-key, mixed>
+     */
+    private function redactArray(array $data): array
+    {
+        $keys = $this->redactKeys();
+
+        if ($keys === []) {
+            return $data;
+        }
+
+        foreach ($data as $key => $value) {
+            if (in_array(strtolower((string) $key), $keys, true)) {
+                $data[$key] = '[redacted]';
+
+                continue;
+            }
+
+            if (is_array($value)) {
+                $data[$key] = $this->redactArray($value);
+            }
+        }
+
+        return $data;
     }
 
     private function formatRecord(LogRecord $record): string

@@ -111,11 +111,15 @@ class ReportState
     /**
      * @param  array{channel: string, ts: string, summary: string}  $message
      */
-    public static function storeMessage(string $fingerprint, array $message): void
+    public static function storeMessage(string $fingerprint, array $message, ?BugReport $report = null): void
     {
         $limit = (int) config('bug-reports.slack.actions.stored_messages', 50);
 
-        $messages = collect(self::messages($fingerprint))
+        $existing = $report instanceof BugReport && is_array($report->slack_messages)
+            ? $report->slack_messages
+            : self::messages($fingerprint);
+
+        $messages = collect($existing)
             ->reject(fn (array $stored): bool => $stored['channel'] === $message['channel'] && $stored['ts'] === $message['ts'])
             ->push($message)
             ->take(-$limit)

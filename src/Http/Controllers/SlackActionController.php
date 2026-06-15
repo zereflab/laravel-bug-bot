@@ -78,6 +78,8 @@ class SlackActionController extends Controller
 
         foreach (ReportState::messages($fingerprint) as $message) {
             Http::withToken($token)
+                ->connectTimeout(3)
+                ->timeout(5)
                 ->asJson()
                 ->post('https://slack.com/api/chat.update', [
                     'channel' => $message['channel'],

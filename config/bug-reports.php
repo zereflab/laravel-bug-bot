@@ -32,14 +32,53 @@ return [
 
     'cache_prefix' => env('BUG_REPORTS_CACHE_PREFIX', 'bug-reports'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Redacted Keys
+    |--------------------------------------------------------------------------
+    |
+    | Case-insensitive keys whose values are stripped from captured request
+    | URLs and log context before being stored or sent to Slack. Prevents
+    | secrets and PII (tokens, passwords, etc.) from leaking into reports.
+    |
+    */
+
+    'redact' => [
+        'password',
+        'password_confirmation',
+        'token',
+        '_token',
+        'access_token',
+        'refresh_token',
+        'api_key',
+        'apikey',
+        'secret',
+        'authorization',
+        'auth',
+        'cookie',
+        'session',
+        'credit_card',
+        'card_number',
+        'cvv',
+    ],
+
     'database' => [
         'table' => env('BUG_REPORTS_TABLE', 'bug_reports'),
+    ],
+
+    'occurrences' => [
+        // Retention window for the bug-reports:prune-occurrences command.
+        // Schedule it (e.g. daily) so the occurrences table stays bounded.
+        // Set to 0 to disable pruning.
+        'retention_days' => (int) env('BUG_REPORTS_OCCURRENCES_RETENTION_DAYS', 30),
     ],
 
     'routes' => [
         'enabled' => env('BUG_REPORTS_ROUTES_ENABLED', true),
         'prefix' => env('BUG_REPORTS_ROUTE_PREFIX', 'bug-reports'),
         'middleware' => array_filter(explode(',', (string) env('BUG_REPORTS_ROUTE_MIDDLEWARE', 'api'))),
+        // Rate limit appended to webhook routes as "throttle:<value>". Set empty to disable.
+        'throttle' => env('BUG_REPORTS_ROUTE_THROTTLE', '60,1'),
     ],
 
     'dashboard' => [
