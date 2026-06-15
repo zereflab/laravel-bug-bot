@@ -5,16 +5,18 @@ namespace Zereflab\LaravelBugReports\Logging;
 use DateTimeZone;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\LogRecord;
-use RuntimeException;
 use Throwable;
+use Zereflab\LaravelBugReports\Jobs\DeliverBugReport;
 use Zereflab\LaravelBugReports\Models\BugReport;
+use Zereflab\LaravelBugReports\Support\DispatchesQueuedWork;
 use Zereflab\LaravelBugReports\Support\ReportState;
 
 class SlackBugReportHandler extends AbstractProcessingHandler
 {
+    use DispatchesQueuedWork;
+
     public function __construct(
         private readonly ?string $token,
         private readonly ?string $channel,
@@ -56,66 +58,17 @@ class SlackBugReportHandler extends AbstractProcessingHandler
             return;
         }
 
-        try {
-            $response = Http::withToken($this->token)
-                ->connectTimeout(3)
-                ->timeout(5)
-                ->asJson()
-                ->post('https://slack.com/api/chat.postMessage', [
-                    'channel' => $this->channel,
-                    'username' => $this->username,
-                    'icon_emoji' => $this->emoji,
-                    'text' => $summary,
-                    'blocks' => $this->parentBlocks($summary, $fingerprint),
-                ]);
-
-            if (! $response->successful() || $response->json('ok') !== true) {
-                $this->fail('Slack parent message failed with error ['.($response->json('error') ?: $response->status()).'].');
-
-                return;
-            }
-
-            $threadTimestamp = $response->json('ts');
-
-            if (! is_string($threadTimestamp) || $threadTimestamp === '') {
-                return;
-            }
-
-            ReportState::storeMessage($fingerprint, [
-                'channel' => $this->channel,
-                'ts' => $threadTimestamp,
-                'summary' => $summary,
-            ], $report);
-
-            foreach ($this->threadMessages($record, $exception) as $message) {
-                $replyResponse = Http::withToken($this->token)
-                    ->connectTimeout(3)
-                    ->timeout(5)
-                    ->asJson()
-                    ->post('https://slack.com/api/chat.postMessage', [
-                        'channel' => $this->channel,
-                        'username' => $this->username,
-                        'icon_emoji' => $this->emoji,
-                        'thread_ts' => $threadTimestamp,
-                        'text' => $message,
-                    ]);
-
-                if (! $replyResponse->successful() || $replyResponse->json('ok') !== true) {
-                    $this->fail('Slack thread reply failed with error ['.($replyResponse->json('error') ?: $replyResponse->status()).'].');
-                }
-            }
-        } catch (Throwable $exception) {
-            if ($this->throwOnFailure) {
-                throw $exception;
-            }
-        }
-    }
-
-    private function fail(string $message): void
-    {
-        if ($this->throwOnFailure) {
-            throw new RuntimeException($message);
-        }
+        $this->dispatchSlackWork(new DeliverBugReport(
+            token: (string) $this->token,
+            channel: (string) $this->channel,
+            username: $this->username,
+            emoji: $this->emoji,
+            summary: $summary,
+            parentBlocks: $this->parentBlocks($summary, $fingerprint),
+            threadMessages: $this->threadMessages($record, $exception),
+            fingerprint: $fingerprint,
+            throwOnFailure: $this->throwOnFailure,
+        ));
     }
 
     private function summary(LogRecord $record, ?Throwable $exception): string

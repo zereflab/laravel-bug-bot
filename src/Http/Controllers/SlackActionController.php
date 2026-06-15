@@ -4,12 +4,15 @@ namespace Zereflab\LaravelBugReports\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Http;
 use Symfony\Component\HttpFoundation\Response;
+use Zereflab\LaravelBugReports\Jobs\UpdateSlackMessages;
+use Zereflab\LaravelBugReports\Support\DispatchesQueuedWork;
 use Zereflab\LaravelBugReports\Support\ReportState;
 
 class SlackActionController extends Controller
 {
+    use DispatchesQueuedWork;
+
     public function __invoke(Request $request): Response
     {
         if (! $this->hasValidSignature($request)) {
@@ -76,39 +79,6 @@ class SlackActionController extends Controller
             return;
         }
 
-        foreach (ReportState::messages($fingerprint) as $message) {
-            Http::withToken($token)
-                ->connectTimeout(3)
-                ->timeout(5)
-                ->asJson()
-                ->post('https://slack.com/api/chat.update', [
-                    'channel' => $message['channel'],
-                    'ts' => $message['ts'],
-                    'text' => $message['summary']."\nStatus: {$status} by {$user}",
-                    'blocks' => $this->updatedBlocks($message['summary'], $fingerprint, $status, $user),
-                ]);
-        }
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function updatedBlocks(string $summary, string $fingerprint, string $status, string $user): array
-    {
-        $label = $status === 'ignored' ? ':no_entry: *Ignored*' : ':white_check_mark: *Solved*';
-
-        return [
-            [
-                'type' => 'section',
-                'text' => ['type' => 'mrkdwn', 'text' => $summary],
-            ],
-            [
-                'type' => 'context',
-                'elements' => [[
-                    'type' => 'mrkdwn',
-                    'text' => "{$label} by {$user} • Fingerprint: `{$fingerprint}`",
-                ]],
-            ],
-        ];
+        $this->dispatchSlackWork(new UpdateSlackMessages((string) $token, $fingerprint, $status, $user));
     }
 }

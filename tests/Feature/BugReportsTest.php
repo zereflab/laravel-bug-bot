@@ -3,11 +3,13 @@
 namespace Zereflab\LaravelBugReports\Tests\Feature;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
+use Zereflab\LaravelBugReports\Jobs\DeliverBugReport;
 use Zereflab\LaravelBugReports\Models\BugReport;
 use Zereflab\LaravelBugReports\Models\BugReportOccurrence;
 use Zereflab\LaravelBugReports\Support\ReportState;
@@ -343,6 +345,38 @@ class BugReportsTest extends TestCase
         $this->assertStringNotContainsString('hunter2', $thread['text']);
         $this->assertStringContainsString('[redacted]', $thread['text']);
         $this->assertStringContainsString('visible', $thread['text']);
+    }
+
+    public function test_it_queues_slack_delivery_when_queueing_is_enabled(): void
+    {
+        config()->set('bug-reports.queue.enabled', true);
+        Cache::flush();
+        Bus::fake();
+        Http::fake();
+
+        Log::channel('bug_reports')->error('Queued failure.', [
+            'exception' => new RuntimeException('Queued failure.'),
+        ]);
+
+        Bus::assertDispatched(DeliverBugReport::class);
+        Http::assertNothingSent();
+    }
+
+    public function test_it_delivers_inline_when_queueing_is_disabled(): void
+    {
+        config()->set('bug-reports.queue.enabled', false);
+        Cache::flush();
+        Bus::fake();
+        Http::fakeSequence()
+            ->push(['ok' => true, 'ts' => '171819.0001'])
+            ->push(['ok' => true]);
+
+        Log::channel('bug_reports')->error('Inline failure.', [
+            'exception' => new RuntimeException('Inline failure.'),
+        ]);
+
+        Bus::assertNotDispatched(DeliverBugReport::class);
+        Http::assertSentCount(2);
     }
 
     private function postSlackAction(array $payload)

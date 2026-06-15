@@ -32,6 +32,29 @@ return [
 
     'cache_prefix' => env('BUG_REPORTS_CACHE_PREFIX', 'bug-reports'),
 
+    // Bounded lifetime (days) for cached status/message fallbacks. The database
+    // remains the source of truth, so this only affects the cache fast-path.
+    'cache_ttl_days' => (int) env('BUG_REPORTS_CACHE_TTL_DAYS', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, Slack delivery (posting reports and updating messages after
+    | a solve/ignore) is dispatched to a queue instead of running inline. This
+    | keeps the failing request fast and avoids the Slack interactivity 3s
+    | deadline. Requires a running queue worker. Disabled by default so installs
+    | without a worker keep delivering inline (with HTTP timeouts).
+    |
+    */
+
+    'queue' => [
+        'enabled' => env('BUG_REPORTS_QUEUE_ENABLED', false),
+        'connection' => env('BUG_REPORTS_QUEUE_CONNECTION'),
+        'queue' => env('BUG_REPORTS_QUEUE_NAME'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Redacted Keys

@@ -65,7 +65,9 @@ class ReportState
             return;
         }
 
-        Cache::forever(self::statusKey($fingerprint), BugReport::STATUS_IGNORED);
+        // Bounded TTL rather than forever; the database row (status_expires_at
+        // null) remains the source of truth for a permanent ignore.
+        Cache::put(self::statusKey($fingerprint), BugReport::STATUS_IGNORED, self::cacheTtl());
     }
 
     public static function solve(string $fingerprint): void
@@ -137,7 +139,7 @@ class ReportState
             //
         }
 
-        Cache::forever(self::messagesKey($fingerprint), $messages);
+        Cache::put(self::messagesKey($fingerprint), $messages, self::cacheTtl());
     }
 
     /**
@@ -233,5 +235,10 @@ class ReportState
     private static function key(string $suffix): string
     {
         return config('bug-reports.cache_prefix', 'bug-reports').":{$suffix}";
+    }
+
+    private static function cacheTtl(): \DateTimeInterface
+    {
+        return now()->addDays(max(1, (int) config('bug-reports.cache_ttl_days', 30)));
     }
 }
