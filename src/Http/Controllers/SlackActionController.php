@@ -24,7 +24,7 @@ class SlackActionController extends Controller
 
         $action = $payload['actions'][0] ?? null;
         $actionId = $action['action_id'] ?? null;
-        $fingerprint = $action['value'] ?? null;
+        $fingerprint = $this->fingerprintFromActionValue($action['value'] ?? null);
         $user = $payload['user']['username'] ?? $payload['user']['name'] ?? $payload['user']['id'] ?? 'Slack user';
 
         if (! is_string($fingerprint) || ! in_array($actionId, [ReportState::ACTION_IGNORE, ReportState::ACTION_SOLVE], true)) {
@@ -66,6 +66,21 @@ class SlackActionController extends Controller
         $expected = 'v0='.hash_hmac('sha256', $base, $secret);
 
         return hash_equals($expected, $signature);
+    }
+
+    private function fingerprintFromActionValue(mixed $value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        $decoded = json_decode($value, true);
+
+        if (is_array($decoded) && is_string($decoded['fingerprint'] ?? null) && $decoded['fingerprint'] !== '') {
+            return $decoded['fingerprint'];
+        }
+
+        return $value;
     }
 
     private function updateMessages(string $fingerprint, string $status, string $user): void

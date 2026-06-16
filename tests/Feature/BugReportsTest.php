@@ -143,6 +143,27 @@ class BugReportsTest extends TestCase
         $this->assertSame('ignored', Cache::get(ReportState::statusKey('test-fingerprint')));
     }
 
+    public function test_slack_action_accepts_managed_json_button_value_on_direct_route(): void
+    {
+        Cache::flush();
+        Http::fake();
+
+        $this->postSlackAction([
+            'actions' => [[
+                'action_id' => ReportState::ACTION_SOLVE,
+                'value' => json_encode([
+                    'v' => 1,
+                    'fingerprint' => 'json-fingerprint',
+                    'action_url' => 'https://client.test/bug-reports/managed/actions',
+                    'signature' => 'client-signature',
+                ]),
+            ]],
+            'user' => ['username' => 'akash'],
+        ])->assertOk();
+
+        $this->assertSame('solved', Cache::get(ReportState::statusKey('json-fingerprint')));
+    }
+
     public function test_the_test_command_reports_slack_failures(): void
     {
         Cache::flush();
