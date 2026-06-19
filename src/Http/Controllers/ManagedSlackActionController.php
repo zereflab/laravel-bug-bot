@@ -24,7 +24,7 @@ class ManagedSlackActionController extends Controller
             return response()->json(['message' => 'Unsupported action.'], 422);
         }
 
-        if (! hash_equals($this->signature($fingerprint, $actionUrl), $signature)) {
+        if (! hash_equals($this->signature($fingerprint, $action, $actionUrl), $signature)) {
             return response()->json(['message' => 'Invalid signature.'], 401);
         }
 
@@ -43,9 +43,9 @@ class ManagedSlackActionController extends Controller
         ]);
     }
 
-    private function signature(string $fingerprint, string $actionUrl): string
+    private function signature(string $fingerprint, string $action, string $actionUrl): string
     {
-        return hash_hmac('sha256', $fingerprint.'|'.$actionUrl, $this->secret());
+        return hash_hmac('sha256', implode('|', [$fingerprint, $action, $actionUrl]), $this->secret());
     }
 
     private function secret(): string

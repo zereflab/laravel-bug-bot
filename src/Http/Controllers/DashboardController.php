@@ -6,7 +6,9 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 use Zereflab\LaravelBugReports\Models\BugReport;
 use Zereflab\LaravelBugReports\Models\BugReportOccurrence;
@@ -22,6 +24,12 @@ class DashboardController extends Controller
             abort(404);
         }
 
+        if (! $this->tableExists()) {
+            return view('bug-reports::dashboard.missing-migration', [
+                'message' => 'The bug reports table was not found. Run "php artisan migrate" to create it.',
+            ]);
+        }
+
         try {
             $reports = BugReport::query()
                 ->when($status !== 'all', fn ($query) => $query->where('status', $status))
@@ -29,22 +37,57 @@ class DashboardController extends Controller
                 ->paginate(15)
                 ->withQueryString();
 
+            $stats = $this->stats();
+
             return view('bug-reports::dashboard.index', [
                 'activeStatus' => $status,
                 'reports' => $reports,
-                'statusCounts' => $this->statusCounts(),
-                'windowCounts' => $this->windowCounts(),
-                'topOrigins' => $this->topOrigins(),
-                'topExceptions' => $this->topExceptions(),
-                'totalReports' => BugReport::query()->count(),
-                'totalOccurrences' => BugReport::query()->sum('occurrences'),
+                'statusCounts' => $stats['statusCounts'],
+                'windowCounts' => $stats['windowCounts'],
+                'topOrigins' => $stats['topOrigins'],
+                'topExceptions' => $stats['topExceptions'],
+                'totalReports' => $stats['statusCounts']['all'],
+                'totalOccurrences' => $stats['totalOccurrences'],
                 'slackInfo' => $this->slackInfo(),
             ]);
         } catch (Throwable $exception) {
+            report($exception);
+
             return view('bug-reports::dashboard.missing-migration', [
-                'message' => $exception->getMessage(),
+                'message' => 'Unable to load bug reports. Check the application logs for details.',
             ]);
         }
+    }
+
+    private function tableExists(): bool
+    {
+        try {
+            return Schema::hasTable((new BugReport)->getTable());
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Dashboard aggregates are expensive and tolerate brief staleness, so they
+     * are cached for a short window and busted when a report changes.
+     *
+     * @return array{statusCounts: array<string, int>, windowCounts: array<int, int>, topOrigins: mixed, topExceptions: mixed, totalOccurrences: int}
+     */
+    private function stats(): array
+    {
+        return Cache::remember($this->statsCacheKey(), 60, fn (): array => [
+            'statusCounts' => $this->statusCounts(),
+            'windowCounts' => $this->windowCounts(),
+            'topOrigins' => $this->topOrigins(),
+            'topExceptions' => $this->topExceptions(),
+            'totalOccurrences' => (int) BugReport::query()->sum('occurrences'),
+        ]);
+    }
+
+    private function statsCacheKey(): string
+    {
+        return config('bug-reports.cache_prefix', 'bug-reports').':dashboard:stats';
     }
 
     public function solve(Request $request, BugReport $bugReport): RedirectResponse
@@ -52,6 +95,7 @@ class DashboardController extends Controller
         $this->authorizeDashboard($request);
 
         ReportState::solve($bugReport->fingerprint);
+        $this->forgetStats();
 
         return back()->with('bug_reports_status', 'Bug report marked as solved.');
     }
@@ -61,6 +105,7 @@ class DashboardController extends Controller
         $this->authorizeDashboard($request);
 
         ReportState::ignore($bugReport->fingerprint);
+        $this->forgetStats();
 
         return back()->with('bug_reports_status', 'Bug report ignored.');
     }
@@ -70,8 +115,14 @@ class DashboardController extends Controller
         $this->authorizeDashboard($request);
 
         ReportState::delete($bugReport->fingerprint);
+        $this->forgetStats();
 
         return back()->with('bug_reports_status', 'Bug report deleted.');
+    }
+
+    private function forgetStats(): void
+    {
+        Cache::forget($this->statsCacheKey());
     }
 
     private function authorizeDashboard(Request $request): void
@@ -141,12 +192,21 @@ class DashboardController extends Controller
      */
     private function windowCounts(): array
     {
-        return collect([1, 5, 7, 10, 30])
-            ->mapWithKeys(fn (int $days): array => [
-                $days => BugReportOccurrence::query()
-                    ->where('occurred_at', '>=', now()->subDays($days))
-                    ->count(),
-            ])
+        $windows = [1, 5, 7, 10, 30];
+
+        $query = BugReportOccurrence::query();
+
+        foreach ($windows as $days) {
+            $query->selectRaw(
+                'sum(case when occurred_at >= ? then 1 else 0 end) as d'.$days,
+                [now()->subDays($days)]
+            );
+        }
+
+        $row = $query->first();
+
+        return collect($windows)
+            ->mapWithKeys(fn (int $days): array => [$days => (int) ($row?->{'d'.$days} ?? 0)])
             ->all();
     }
 

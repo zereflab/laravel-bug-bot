@@ -2,12 +2,14 @@
 
 namespace Zereflab\LaravelBugReports;
 
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\ServiceProvider;
+use Zereflab\LaravelBugReports\Commands\PruneOccurrencesCommand;
 use Zereflab\LaravelBugReports\Commands\TestBugReportCommand;
 use Zereflab\LaravelBugReports\Http\Controllers\SlackActionController;
 use Zereflab\LaravelBugReports\Logging\BugReportLogger;
@@ -40,6 +42,7 @@ class BugReportsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 TestBugReportCommand::class,
+                PruneOccurrencesCommand::class,
             ]);
         }
     }
@@ -72,13 +75,13 @@ class BugReportsServiceProvider extends ServiceProvider
 
         Route::group([
             'prefix' => config('bug-reports.routes.prefix', 'bug-reports'),
-            'middleware' => config('bug-reports.routes.middleware', ['api']),
+            'middleware' => $this->routeMiddleware(),
         ], fn () => $this->loadRoutesFrom(__DIR__.'/../routes/api.php'));
 
         foreach ($this->slackActionPrefixAliases() as $prefix) {
             Route::group([
                 'prefix' => $prefix,
-                'middleware' => config('bug-reports.routes.middleware', ['api']),
+                'middleware' => $this->routeMiddleware(),
             ], fn () => $this->withoutCsrf(
                 Route::post('slack/actions', SlackActionController::class)
             ));
@@ -135,14 +138,33 @@ class BugReportsServiceProvider extends ServiceProvider
         return trim((string) $prefix, '/');
     }
 
+    /**
+     * Webhook route middleware with an appended rate limiter. Signature
+     * verification protects state changes; the throttle caps abuse load.
+     *
+     * @return array<int, string>
+     */
+    private function routeMiddleware(): array
+    {
+        $middleware = (array) config('bug-reports.routes.middleware', ['api']);
+
+        $throttle = config('bug-reports.routes.throttle', '60,1');
+
+        if (filled($throttle)) {
+            $middleware[] = 'throttle:'.$throttle;
+        }
+
+        return array_values(array_unique($middleware));
+    }
+
     private function withoutCsrf(RoutingRoute $route): void
     {
-        if (! class_exists(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)) {
+        if (! class_exists(VerifyCsrfToken::class)) {
             return;
         }
 
         $route->withoutMiddleware([
-            \Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class,
+            VerifyCsrfToken::class,
         ]);
     }
 }
