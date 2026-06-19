@@ -197,12 +197,14 @@
             <section class="analytics">
                 <div class="panel">
                     <div class="label">Noisiest origins · last 30 days</div>
-                    @php($originMax = max(1, (int) ($topOrigins->max('total') ?? 1)))
+                    @php($originMax = max(1, (int) collect($topOrigins)->max('total')))
                     @forelse ($topOrigins as $origin)
                         <div class="list-row">
-                            <span title="{{ $origin->origin }}">{{ $origin->origin ?: 'Unknown origin' }}</span>
-                            <span class="bar-track"><span class="bar" style="display:block; width: {{ (int) round($origin->total / $originMax * 100) }}%"></span></span>
-                            <strong>{{ number_format($origin->total) }}</strong>
+                            @php($originName = data_get($origin, 'origin'))
+                            @php($originTotal = (int) data_get($origin, 'total', 0))
+                            <span title="{{ $originName }}">{{ $originName ?: 'Unknown origin' }}</span>
+                            <span class="bar-track"><span class="bar" style="display:block; width: {{ (int) round($originTotal / $originMax * 100) }}%"></span></span>
+                            <strong>{{ number_format($originTotal) }}</strong>
                         </div>
                     @empty
                         <div class="muted">No origin data yet.</div>
@@ -210,12 +212,14 @@
                 </div>
                 <div class="panel">
                     <div class="label">Top exception classes · last 30 days</div>
-                    @php($exceptionMax = max(1, (int) ($topExceptions->max('total') ?? 1)))
+                    @php($exceptionMax = max(1, (int) collect($topExceptions)->max('total')))
                     @forelse ($topExceptions as $exception)
                         <div class="list-row">
-                            <span title="{{ $exception->exception_class }}">{{ $exception->exception_class ? class_basename($exception->exception_class) : 'Log message' }}</span>
-                            <span class="bar-track"><span class="bar" style="display:block; width: {{ (int) round($exception->total / $exceptionMax * 100) }}%"></span></span>
-                            <strong>{{ number_format($exception->total) }}</strong>
+                            @php($exceptionClass = data_get($exception, 'exception_class'))
+                            @php($exceptionTotal = (int) data_get($exception, 'total', 0))
+                            <span title="{{ $exceptionClass }}">{{ $exceptionClass ? class_basename($exceptionClass) : 'Log message' }}</span>
+                            <span class="bar-track"><span class="bar" style="display:block; width: {{ (int) round($exceptionTotal / $exceptionMax * 100) }}%"></span></span>
+                            <strong>{{ number_format($exceptionTotal) }}</strong>
                         </div>
                     @empty
                         <div class="muted">No exception data yet.</div>

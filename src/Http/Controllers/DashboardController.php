@@ -72,7 +72,7 @@ class DashboardController extends Controller
      * Dashboard aggregates are expensive and tolerate brief staleness, so they
      * are cached for a short window and busted when a report changes.
      *
-     * @return array{statusCounts: array<string, int>, windowCounts: array<int, int>, topOrigins: mixed, topExceptions: mixed, totalOccurrences: int}
+     * @return array{statusCounts: array<string, int>, windowCounts: array<int, int>, topOrigins: array<int, array{origin: string|null, total: int}>, topExceptions: array<int, array{exception_class: string|null, total: int}>, totalOccurrences: int}
      */
     private function stats(): array
     {
@@ -87,7 +87,7 @@ class DashboardController extends Controller
 
     private function statsCacheKey(): string
     {
-        return config('bug-reports.cache_prefix', 'bug-reports').':dashboard:stats';
+        return config('bug-reports.cache_prefix', 'bug-reports').':dashboard:stats:v2';
     }
 
     public function solve(Request $request, BugReport $bugReport): RedirectResponse
@@ -210,7 +210,10 @@ class DashboardController extends Controller
             ->all();
     }
 
-    private function topOrigins()
+    /**
+     * @return array<int, array{origin: string|null, total: int}>
+     */
+    private function topOrigins(): array
     {
         return BugReportOccurrence::query()
             ->select('origin')
@@ -219,10 +222,18 @@ class DashboardController extends Controller
             ->groupBy('origin')
             ->orderByDesc('total')
             ->limit(5)
-            ->get();
+            ->get()
+            ->map(fn ($row): array => [
+                'origin' => $row->origin,
+                'total' => (int) $row->total,
+            ])
+            ->all();
     }
 
-    private function topExceptions()
+    /**
+     * @return array<int, array{exception_class: string|null, total: int}>
+     */
+    private function topExceptions(): array
     {
         return BugReportOccurrence::query()
             ->select('exception_class')
@@ -231,6 +242,11 @@ class DashboardController extends Controller
             ->groupBy('exception_class')
             ->orderByDesc('total')
             ->limit(5)
-            ->get();
+            ->get()
+            ->map(fn ($row): array => [
+                'exception_class' => $row->exception_class,
+                'total' => (int) $row->total,
+            ])
+            ->all();
     }
 }
