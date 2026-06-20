@@ -58,11 +58,7 @@ class DeliverBugReport implements ShouldQueue
                 return;
             }
 
-            ReportState::storeMessage($this->fingerprint, [
-                'channel' => $this->channel,
-                'ts' => $threadTimestamp,
-                'summary' => $this->summary,
-            ]);
+            $threadReplyTimestamps = [];
 
             foreach ($this->threadMessages as $message) {
                 $replyResponse = Http::withToken($this->token)
@@ -79,8 +75,23 @@ class DeliverBugReport implements ShouldQueue
 
                 if (! $replyResponse->successful() || $replyResponse->json('ok') !== true) {
                     $this->failDelivery('Slack thread reply failed with error ['.($replyResponse->json('error') ?: $replyResponse->status()).'].');
+
+                    continue;
+                }
+
+                $replyTimestamp = $replyResponse->json('ts');
+
+                if (is_string($replyTimestamp) && $replyTimestamp !== '') {
+                    $threadReplyTimestamps[] = $replyTimestamp;
                 }
             }
+
+            ReportState::storeMessage($this->fingerprint, [
+                'channel' => $this->channel,
+                'ts' => $threadTimestamp,
+                'summary' => $this->summary,
+                'thread_ts' => $threadReplyTimestamps,
+            ]);
         } catch (Throwable $exception) {
             if ($this->throwOnFailure) {
                 throw $exception;

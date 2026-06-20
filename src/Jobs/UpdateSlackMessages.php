@@ -18,11 +18,18 @@ class UpdateSlackMessages implements ShouldQueue
         private readonly string $fingerprint,
         private readonly string $status,
         private readonly string $user,
+        private readonly ?array $messages = null,
     ) {}
 
     public function handle(): void
     {
-        foreach (ReportState::messages($this->fingerprint) as $message) {
+        foreach ($this->messages ?? ReportState::messages($this->fingerprint) as $message) {
+            if ($this->status === 'deleted') {
+                $this->deleteMessageThread($message);
+
+                continue;
+            }
+
             Http::withToken($this->token)
                 ->connectTimeout(3)
                 ->timeout(5)
@@ -41,7 +48,11 @@ class UpdateSlackMessages implements ShouldQueue
      */
     private function updatedBlocks(string $summary): array
     {
-        $label = $this->status === 'ignored' ? ':no_entry: *Ignored*' : ':white_check_mark: *Solved*';
+        $label = match ($this->status) {
+            'ignored' => ':large_yellow_circle: *Ignored*',
+            'deleted' => ':red_circle: *Deleted*',
+            default => ':large_green_circle: *Solved*',
+        };
 
         return [
             [
@@ -56,5 +67,29 @@ class UpdateSlackMessages implements ShouldQueue
                 ]],
             ],
         ];
+    }
+
+    /**
+     * @param  array{channel: string, ts: string, summary: string, thread_ts?: array<int, string>}  $message
+     */
+    private function deleteMessageThread(array $message): void
+    {
+        foreach (array_reverse($message['thread_ts'] ?? []) as $threadTimestamp) {
+            $this->deleteSlackMessage($message['channel'], $threadTimestamp);
+        }
+
+        $this->deleteSlackMessage($message['channel'], $message['ts']);
+    }
+
+    private function deleteSlackMessage(string $channel, string $timestamp): void
+    {
+        Http::withToken($this->token)
+            ->connectTimeout(3)
+            ->timeout(5)
+            ->asJson()
+            ->post('https://slack.com/api/chat.delete', [
+                'channel' => $channel,
+                'ts' => $timestamp,
+            ]);
     }
 }

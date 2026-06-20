@@ -5,10 +5,14 @@ namespace Zereflab\LaravelBugReports\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Symfony\Component\HttpFoundation\Response;
+use Zereflab\LaravelBugReports\Jobs\UpdateSlackMessages;
+use Zereflab\LaravelBugReports\Support\DispatchesQueuedWork;
 use Zereflab\LaravelBugReports\Support\ReportState;
 
 class ManagedSlackActionController extends Controller
 {
+    use DispatchesQueuedWork;
+
     public function __invoke(Request $request): Response
     {
         $fingerprint = $request->string('fingerprint')->toString();
@@ -20,7 +24,7 @@ class ManagedSlackActionController extends Controller
             return response()->json(['message' => 'Invalid managed action payload.'], 422);
         }
 
-        if (! in_array($action, [ReportState::ACTION_IGNORE, ReportState::ACTION_SOLVE], true)) {
+        if (! in_array($action, [ReportState::ACTION_IGNORE, ReportState::ACTION_SOLVE, ReportState::ACTION_DELETE], true)) {
             return response()->json(['message' => 'Unsupported action.'], 422);
         }
 
@@ -28,13 +32,21 @@ class ManagedSlackActionController extends Controller
             return response()->json(['message' => 'Invalid signature.'], 401);
         }
 
-        if ($action === ReportState::ACTION_IGNORE) {
-            ReportState::ignore($fingerprint);
-            $status = 'ignored';
-        } else {
-            ReportState::solve($fingerprint);
-            $status = 'solved';
+        $status = match ($action) {
+            ReportState::ACTION_IGNORE => 'ignored',
+            ReportState::ACTION_DELETE => 'deleted',
+            default => 'solved',
+        };
+
+        if ($status === 'deleted') {
+            $this->deleteSlackMessages($fingerprint, $request->string('user')->toString() ?: 'Slack user', ReportState::messages($fingerprint));
         }
+
+        match ($status) {
+            'ignored' => ReportState::ignore($fingerprint),
+            'deleted' => ReportState::delete($fingerprint),
+            default => ReportState::solve($fingerprint),
+        };
 
         return response()->json([
             'ok' => true,
@@ -51,5 +63,16 @@ class ManagedSlackActionController extends Controller
     private function secret(): string
     {
         return (string) config('bug-reports.slack.actions.managed_callback_secret', config('app.key'));
+    }
+
+    private function deleteSlackMessages(string $fingerprint, string $user, array $messages): void
+    {
+        $token = config('bug-reports.slack.bot_token');
+
+        if (blank($token)) {
+            return;
+        }
+
+        $this->dispatchSlackWork(new UpdateSlackMessages((string) $token, $fingerprint, 'deleted', $user, $messages));
     }
 }

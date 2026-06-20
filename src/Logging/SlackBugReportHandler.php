@@ -139,6 +139,20 @@ class SlackBugReportHandler extends AbstractProcessingHandler
                         'action_id' => ReportState::ACTION_IGNORE,
                         'value' => $this->buttonValue($fingerprint, ReportState::ACTION_IGNORE),
                     ],
+                    [
+                        'type' => 'button',
+                        'text' => ['type' => 'plain_text', 'text' => 'Delete'],
+                        'style' => 'danger',
+                        'action_id' => ReportState::ACTION_DELETE,
+                        'value' => $this->buttonValue($fingerprint, ReportState::ACTION_DELETE),
+                        'confirm' => [
+                            'title' => ['type' => 'plain_text', 'text' => 'Delete bug report?'],
+                            'text' => ['type' => 'plain_text', 'text' => 'This will delete this bug report and remove its stored Slack messages.'],
+                            'confirm' => ['type' => 'plain_text', 'text' => 'Delete'],
+                            'deny' => ['type' => 'plain_text', 'text' => 'Cancel'],
+                            'style' => 'danger',
+                        ],
+                    ],
                 ],
             ],
         ];

@@ -14,6 +14,8 @@ class ReportState
 
     public const ACTION_SOLVE = 'bug_reports_solve';
 
+    public const ACTION_DELETE = 'bug_reports_delete';
+
     public static function isIgnored(string $fingerprint): bool
     {
         try {
@@ -112,7 +114,7 @@ class ReportState
     }
 
     /**
-     * @param  array{channel: string, ts: string, summary: string}  $message
+     * @param  array{channel: string, ts: string, summary: string, thread_ts?: array<int, string>}  $message
      */
     public static function storeMessage(string $fingerprint, array $message, ?BugReport $report = null): void
     {
@@ -144,7 +146,7 @@ class ReportState
     }
 
     /**
-     * @return array<int, array{channel: string, ts: string, summary: string}>
+     * @return array<int, array{channel: string, ts: string, summary: string, thread_ts?: array<int, string>}>
      */
     public static function messages(string $fingerprint): array
     {

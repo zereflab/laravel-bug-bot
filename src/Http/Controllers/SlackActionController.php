@@ -30,24 +30,25 @@ class SlackActionController extends Controller
         $fingerprint = $this->fingerprintFromActionValue($action['value'] ?? null);
         $user = $payload['user']['username'] ?? $payload['user']['name'] ?? $payload['user']['id'] ?? 'Slack user';
 
-        if (! is_string($fingerprint) || ! in_array($actionId, [ReportState::ACTION_IGNORE, ReportState::ACTION_SOLVE], true)) {
+        if (! is_string($fingerprint) || ! in_array($actionId, [ReportState::ACTION_IGNORE, ReportState::ACTION_SOLVE, ReportState::ACTION_DELETE], true)) {
             return response('Unsupported action.', 422);
         }
 
-        $status = $actionId === ReportState::ACTION_IGNORE ? 'ignored' : 'solved';
+        $status = $this->statusFromAction($actionId);
 
-        if ($status === 'ignored') {
-            ReportState::ignore($fingerprint);
+        if ($status === 'deleted') {
+            $this->updateMessages($fingerprint, $status, $user, ReportState::messages($fingerprint));
+            ReportState::delete($fingerprint);
         } else {
-            ReportState::solve($fingerprint);
+            $this->applyAction($fingerprint, $actionId);
+            $this->updateMessages($fingerprint, $status, $user);
         }
 
-        $this->updateMessages($fingerprint, $status, $user);
-
-        return response($status === 'ignored'
-            ? 'Ignored this error fingerprint.'
-            : 'Marked this error fingerprint as solved.'
-        );
+        return response(match ($status) {
+            'ignored' => 'Ignored this error fingerprint.',
+            'deleted' => 'Deleted this error fingerprint.',
+            default => 'Marked this error fingerprint as solved.',
+        });
     }
 
     private function hasValidSignature(Request $request): bool
@@ -86,7 +87,7 @@ class SlackActionController extends Controller
         return $value;
     }
 
-    private function updateMessages(string $fingerprint, string $status, string $user): void
+    private function updateMessages(string $fingerprint, string $status, string $user, ?array $messages = null): void
     {
         $token = config('bug-reports.slack.bot_token');
 
@@ -94,6 +95,26 @@ class SlackActionController extends Controller
             return;
         }
 
-        $this->dispatchSlackWork(new UpdateSlackMessages((string) $token, $fingerprint, $status, $user));
+        $this->dispatchSlackWork(new UpdateSlackMessages((string) $token, $fingerprint, $status, $user, $messages));
+    }
+
+    private function applyAction(string $fingerprint, string $actionId): void
+    {
+        if ($actionId === ReportState::ACTION_IGNORE) {
+            ReportState::ignore($fingerprint);
+
+            return;
+        }
+
+        ReportState::solve($fingerprint);
+    }
+
+    private function statusFromAction(string $actionId): string
+    {
+        return match ($actionId) {
+            ReportState::ACTION_IGNORE => 'ignored',
+            ReportState::ACTION_DELETE => 'deleted',
+            default => 'solved',
+        };
     }
 }
